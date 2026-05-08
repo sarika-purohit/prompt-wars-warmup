@@ -2,6 +2,11 @@
 
 import os
 from dataclasses import dataclass, field
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 
 @dataclass(frozen=True)
@@ -19,6 +24,9 @@ class Settings:
     )
     gemini_model: str = field(
         default_factory=lambda: os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+    )
+    use_mock_data: bool = field(
+        default_factory=lambda: os.environ.get("USE_MOCK_DATA", "false").lower() == "true"
     )
 
     # Google Maps

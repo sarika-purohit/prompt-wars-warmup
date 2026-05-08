@@ -176,3 +176,31 @@ pytest tests/ -v
 ## 📄 License
 
 MIT
+
+## Phase 2: Production Readiness
+
+We heavily upgraded the MVP for Phase 2, focusing on enterprise-grade architecture and leveraging **Google Cloud Platform (GCP)** and **Google Maps** resources to deliver a premium, high-speed UX.
+
+### Why This Wins
+* **Google First:** We deeply integrate Google Maps Platform (Places Autocomplete, Places Data, Geocoding) to validate all user input and LLM output.
+* **Performance:** Implemented robust Firestore Caching so repeated queries return instantly, saving LLM tokens and improving perceived speed.
+* **Clean Architecture:** Refactored FastAPI to use \Depends()\ dependency injection and added structured logging middleware.
+* **Premium UX:** Replaced blocking loaders with elegant Skeleton UIs and split React views for better maintainability.
+
+### Architecture Flow
+
+\\\mermaid
+graph TD
+    User([User]) --> |Visits UI| React[React/Vite Frontend]
+    React --> |Types City| MapsAuto[Google Places Autocomplete]
+    React --> |Generates Trip| API[FastAPI Backend]
+    
+    API --> |1. Check Cache| Firestore[(Firestore DB)]
+    API --> |2. Fetch Context| MapsAPI[Google Maps Platform]
+    API --> |3. Fetch Weather| Weather[Open-Meteo API]
+    API --> |4. Prompt| Gemini[Gemini 2.0 Flash]
+    
+    Gemini --> |Structured JSON| API
+    API --> |Cache Result| Firestore
+    API --> |Response| React
+\\\`n

@@ -5,45 +5,31 @@ from __future__ import annotations
 import logging
 from datetime import date
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 
-from models.user_input import AdaptRequest, AdaptationResult, Itinerary
+from models.user_input import AdaptRequest, AdaptationResult, Itinerary, DayPlan, PlaceDetail
 from services.gemini_service import GeminiService
 from services.maps_service import MapsService
 from services.weather_service import WeatherService
 from services.firestore_service import FirestoreService
+from api.dependencies import get_gemini_service, get_maps_service, get_weather_service, get_firestore_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/adapt", tags=["adapt"])
 
-_gemini = None
-_maps = None
-_weather = None
-_firestore = None
-
-
-def init_services(
-    gemini: GeminiService,
-    maps: MapsService,
-    weather: WeatherService,
-    firestore: FirestoreService,
-) -> None:
-    """Wire service instances into this router."""
-    global _gemini, _maps, _weather, _firestore
-    _gemini, _maps, _weather, _firestore = gemini, maps, weather, firestore
-
 
 @router.post("/", response_model=AdaptationResult)
-async def adapt_itinerary(request: AdaptRequest) -> AdaptationResult:
-    """Adapt an existing itinerary based on changed conditions.
-
-    Fetches weather data, then asks Gemini to re-optimize the plan.
-    """
-    if not _gemini or not _firestore:
-        raise HTTPException(status_code=503, detail="Services not initialized")
+async def adapt_itinerary(
+    request: AdaptRequest,
+    gemini: GeminiService = Depends(get_gemini_service),
+    maps: MapsService = Depends(get_maps_service),
+    weather: WeatherService = Depends(get_weather_service),
+    firestore: FirestoreService = Depends(get_firestore_service)
+) -> AdaptationResult:
+    """Adapt an existing itinerary based on changed conditions."""
 
     # Load current itinerary
-    current = await _firestore.get_itinerary(request.itinerary_id)
+    current = await firestore.get_itinerary(request.itinerary_id)
     if not current:
         raise HTTPException(status_code=404, detail="Itinerary not found")
 
@@ -53,11 +39,11 @@ async def adapt_itinerary(request: AdaptRequest) -> AdaptationResult:
 
     # Fetch weather if requested
     weather_info = None
-    if request.weather_check and _weather and _maps:
+    if request.weather_check:
         try:
-            coords = await _maps.geocode(current.destination)
+            coords = await maps.geocode(current.destination)
             if coords["lat"] != 0.0:
-                weather_info = await _weather.get_forecast(
+                weather_info = await weather.get_forecast(
                     coords["lat"],
                     coords["lng"],
                     date.fromisoformat(current.start_date),
@@ -67,7 +53,7 @@ async def adapt_itinerary(request: AdaptRequest) -> AdaptationResult:
             logger.warning("Weather fetch failed (non-fatal): %s", exc)
 
     try:
-        result = await _gemini.adapt_itinerary(current, request, weather_info)
+        result = await gemini.adapt_itinerary(current, request, weather_info)
 
         # Build adapted itinerary from response
         adapted_data = result.get("adapted_itinerary", {})
@@ -87,8 +73,6 @@ async def adapt_itinerary(request: AdaptRequest) -> AdaptationResult:
         )
 
         # Parse days from adapted data
-        from models.user_input import DayPlan, PlaceDetail
-
         for day_data in adapted_data.get("days", []):
             activities = [PlaceDetail(**a) for a in day_data.get("activities", [])]
             meals = [PlaceDetail(**m) for m in day_data.get("meals", [])]
@@ -106,7 +90,7 @@ async def adapt_itinerary(request: AdaptRequest) -> AdaptationResult:
 
         # Save adapted version
         try:
-            await _firestore.save_itinerary(adapted)
+            await firestore.save_itinerary(adapted)
         except Exception:
             pass
 
@@ -131,13 +115,11 @@ async def get_weather(
     lng: float,
     start_date: str,
     end_date: str,
+    weather: WeatherService = Depends(get_weather_service)
 ) -> dict:
     """Get weather forecast for a location and date range."""
-    if not _weather:
-        raise HTTPException(status_code=503, detail="Weather service not available")
-
     try:
-        return await _weather.get_forecast(
+        return await weather.get_forecast(
             lat, lng,
             date.fromisoformat(start_date),
             date.fromisoformat(end_date),

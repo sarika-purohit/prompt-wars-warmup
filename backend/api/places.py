@@ -5,20 +5,15 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional, List, Dict
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 
 from services.maps_service import MapsService
+from api.dependencies import get_maps_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/places", tags=["places"])
 
-_maps = None
 
-
-def init_services(maps: MapsService) -> None:
-    """Wire service instances into this router."""
-    global _maps
-    _maps = maps
 
 
 @router.get("/search")
@@ -27,9 +22,10 @@ async def search_places(
     lat: Optional[float] = Query(default=None, description="Latitude for location bias"),
     lng: Optional[float] = Query(default=None, description="Longitude for location bias"),
     limit: int = Query(default=10, ge=1, le=20),
+    maps: MapsService = Depends(get_maps_service)
 ) -> List[Dict[str, Any]]:
     """Search for places using Google Maps."""
-    if not _maps:
+    if not maps:
         raise HTTPException(status_code=503, detail="Maps service not available")
 
     location = None
@@ -37,7 +33,7 @@ async def search_places(
         location = {"lat": lat, "lng": lng}
 
     try:
-        return await _maps.search_places(q, location, max_results=limit)
+        return await maps.search_places(q, location, max_results=limit)
     except Exception as exc:
         logger.exception("Place search failed")
         raise HTTPException(status_code=500, detail="Place search failed")

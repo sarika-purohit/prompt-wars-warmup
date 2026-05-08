@@ -3,6 +3,7 @@
  */
 
 import { useState } from 'react';
+import PlaceAutocomplete from './PlaceAutocomplete';
 import './TripForm.css';
 
 const INTERESTS = [
@@ -19,6 +20,8 @@ const INTERESTS = [
 const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'THB', 'AED'];
 
 export default function TripForm({ onSubmit, loading }) {
+  const today = new Date().toISOString().split('T')[0];
+  
   const [form, setForm] = useState({
     destination: '',
     start_date: '',
@@ -65,16 +68,13 @@ export default function TripForm({ onSubmit, loading }) {
       {/* Destination */}
       <div className="input-group">
         <label htmlFor="destination">Destination</label>
-        <input
-          id="destination"
-          className="input"
-          type="text"
-          placeholder="e.g. Jaipur, Rajasthan"
-          value={form.destination}
-          onChange={(e) => updateField('destination', e.target.value)}
-          required
-          autoFocus
-        />
+        <div className="autocomplete-wrapper">
+          <span className="location-icon" aria-hidden="true">📍</span>
+          <PlaceAutocomplete
+            defaultValue={form.destination}
+            onPlaceSelect={(val) => updateField('destination', val)}
+          />
+        </div>
       </div>
 
       {/* Dates */}
@@ -85,6 +85,7 @@ export default function TripForm({ onSubmit, loading }) {
             id="start_date"
             className="input"
             type="date"
+            min={today}
             value={form.start_date}
             onChange={(e) => updateField('start_date', e.target.value)}
             required
@@ -96,6 +97,7 @@ export default function TripForm({ onSubmit, loading }) {
             id="end_date"
             className="input"
             type="date"
+            min={form.start_date || today}
             value={form.end_date}
             onChange={(e) => updateField('end_date', e.target.value)}
             required

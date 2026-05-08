@@ -9,11 +9,12 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from config import get_settings
-from routers import itinerary, places, adapt
+from core.config import get_settings
+from api import itinerary, places, adapt
 from services.gemini_service import GeminiService
 from services.maps_service import MapsService
 from services.weather_service import WeatherService
+from middleware.logging import TimingMiddleware
 
 # ── Logging ─────────────────────────────────────────────────────────────
 
@@ -30,30 +31,15 @@ async def lifespan(app: FastAPI):
     """Initialize and tear down services."""
     settings = get_settings()
 
-    gemini = GeminiService(settings)
-    maps = MapsService(settings)
-    weather = WeatherService()
-
-    # Try Firestore, fall back gracefully if not configured
-    firestore = None
-    try:
-        from services.firestore_service import FirestoreService
-        firestore = FirestoreService()
-        logger.info("Firestore connected")
-    except Exception as exc:
-        logger.warning("Firestore not available (running without persistence): %s", exc)
-
-    # Wire services into routers
-    itinerary.init_services(gemini, maps, firestore)
-    places.init_services(maps)
-    adapt.init_services(gemini, maps, weather, firestore)
+    from api.dependencies import init_services
+    init_services(settings)
 
     logger.info("TripFlow AI started | model=%s | env=%s", settings.gemini_model, settings.environment)
     yield
 
-    # Cleanup
-    await maps.close()
-    await weather.close()
+    # Cleanup handled by dependencies close_services
+    from api.dependencies import close_services
+    await close_services()
     logger.info("TripFlow AI shut down")
 
 # ── App ─────────────────────────────────────────────────────────────────
@@ -64,6 +50,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Timing and logging middleware
+app.add_middleware(TimingMiddleware)
 
 # CORS
 settings = get_settings()
@@ -103,3 +92,14 @@ app.include_router(adapt.router)
 async def health_check():
     """Health check endpoint for Cloud Run."""
     return {"status": "healthy", "service": "tripflow-api", "version": "1.0.0"}
+
+
+@app.get("/", tags=["health"])
+async def root():
+    """Root endpoint."""
+    return {
+        "service": "TripFlow AI API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/health",
+    }

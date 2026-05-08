@@ -17,6 +17,7 @@ class FirestoreService:
     """CRUD operations for itineraries stored in Cloud Firestore."""
 
     COLLECTION = "itineraries"
+    CACHE_COLLECTION = "itinerary_cache"
 
     def __init__(self) -> None:
         self._db = firestore.AsyncClient()
@@ -68,3 +69,18 @@ class FirestoreService:
                 "budget": data.get("budget"),
             })
         return results
+
+    async def get_cached_itinerary(self, cache_key: str) -> Itinerary | None:
+        """Retrieve an itinerary from the cache."""
+        doc_ref = self._db.collection(self.CACHE_COLLECTION).document(cache_key)
+        doc = await doc_ref.get()
+        if not doc.exists:
+            return None
+        logger.info(f"Cache HIT for {cache_key}")
+        return Itinerary(**doc.to_dict())
+
+    async def save_cached_itinerary(self, cache_key: str, itinerary: Itinerary) -> None:
+        """Save an itinerary to the cache."""
+        doc_ref = self._db.collection(self.CACHE_COLLECTION).document(cache_key)
+        await doc_ref.set(itinerary.model_dump())
+        logger.info(f"Cache SET for {cache_key}")

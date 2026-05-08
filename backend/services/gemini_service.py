@@ -10,7 +10,7 @@ from datetime import timedelta
 from google import genai
 from google.genai import types
 
-from config import Settings
+from core.config import Settings
 from models.user_input import (
     AdaptRequest,
     DayPlan,
@@ -129,6 +129,7 @@ class GeminiService:
     """Wrapper around the Gemini API for itinerary generation."""
 
     def __init__(self, settings: Settings) -> None:
+        self._settings = settings
         self._api_key = settings.gemini_api_key
         self._model = settings.gemini_model
         self._client = None
@@ -149,6 +150,9 @@ class GeminiService:
         places_context: str = "",
     ) -> Itinerary:
         """Generate a complete trip itinerary using Gemini."""
+        if self._settings.use_mock_data:
+            logger.info("Using mock data for itinerary generation")
+            return self._get_mock_itinerary(request)
         total_days = (request.end_date - request.start_date).days + 1
 
         special_req = ""
@@ -211,6 +215,42 @@ class GeminiService:
         return self._parse_json(response)
 
     # ── Private helpers ─────────────────────────────────────────────────
+    
+    def _get_mock_itinerary(self, request: TripRequest) -> Itinerary:
+        total_days = (request.end_date - request.start_date).days + 1
+        days = []
+        for i in range(1, total_days + 1):
+            day_date = (request.start_date + timedelta(days=i - 1)).isoformat()
+            days.append(DayPlan(
+                day_number=i,
+                date=day_date,
+                theme=f"Exploring {request.destination} - Day {i}",
+                travel_tip="Wear comfortable shoes!",
+                day_cost=150,
+                activities=[
+                    PlaceDetail(name="Mock Activity 1", description="A great place to visit.", category="culture", latitude=0, longitude=0, estimated_cost=25, duration_minutes=120, time_slot="10:00 - 12:00", rating=4.5, is_indoor=True, address="123 Mock St"),
+                    PlaceDetail(name="Mock Activity 2", description="Another great place.", category="nature", latitude=0, longitude=0, estimated_cost=30, duration_minutes=120, time_slot="14:00 - 16:00", rating=4.7, is_indoor=False, address="456 Mock Ave")
+                ],
+                meals=[
+                    PlaceDetail(name="Mock Breakfast", description="Start your day right.", category="food", latitude=0, longitude=0, estimated_cost=15, duration_minutes=45, time_slot="08:00 - 08:45", rating=4.0, is_indoor=True, address="789 Breakfast Blvd"),
+                    PlaceDetail(name="Mock Lunch", description="Midday fuel.", category="food", latitude=0, longitude=0, estimated_cost=25, duration_minutes=60, time_slot="12:30 - 13:30", rating=4.2, is_indoor=True, address="321 Lunch Ln"),
+                    PlaceDetail(name="Mock Dinner", description="End your day well.", category="food", latitude=0, longitude=0, estimated_cost=45, duration_minutes=90, time_slot="19:00 - 20:30", rating=4.6, is_indoor=True, address="654 Dinner Dr")
+                ]
+            ))
+            
+        return Itinerary(
+            destination=request.destination,
+            start_date=request.start_date.isoformat(),
+            end_date=request.end_date.isoformat(),
+            total_days=total_days,
+            total_cost=request.budget * 0.8,
+            budget=request.budget,
+            currency=request.currency,
+            group_size=request.group_size,
+            days=days,
+            summary=f"A fantastic {total_days}-day mock trip to {request.destination}.",
+            budget_utilization=80.0
+        )
 
     async def _call_gemini(self, system_prompt: str, user_prompt: str) -> str:
         """Make an async call to the Gemini API."""
