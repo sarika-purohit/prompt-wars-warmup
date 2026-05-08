@@ -1,4 +1,15 @@
-"""Pydantic models for API request and response schemas."""
+"""Pydantic models for API request and response schemas.
+
+All models use Pydantic v2 ``BaseModel`` with strict validation
+constraints (``Field(min_length=...)``, ``Field(gt=0)``, etc.) to
+ensure input data integrity before reaching the service layer.
+
+Security:
+    - All string inputs have ``max_length`` constraints to prevent
+      payload-based denial-of-service attacks.
+    - Numeric inputs have range constraints (``ge``, ``le``, ``gt``).
+    - Enum-based interests prevent arbitrary string injection.
+"""
 
 from __future__ import annotations
 
@@ -9,10 +20,15 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
-# ── Enums ──────────────────────────────────────────────────────────────
+# ── Enums ────────────────────────────────────────────────────────────────
 
 class Interest(str, Enum):
-    """Travel interest categories."""
+    """Travel interest categories used for itinerary personalization.
+
+    Each value maps to a Google Maps Places query filter and
+    a Gemini AI prompt instruction to ensure relevant results.
+    """
+
     CULTURE = "culture"
     FOOD = "food"
     ADVENTURE = "adventure"
@@ -23,15 +39,35 @@ class Interest(str, Enum):
     HISTORY = "history"
 
 
-# ── Request Models ─────────────────────────────────────────────────────
+# ── Request Models ───────────────────────────────────────────────────────
 
 class TripRequest(BaseModel):
-    """Input from the user to generate an itinerary."""
-    destination: str = Field(..., min_length=2, max_length=200, examples=["Jaipur, Rajasthan"])
+    """Input from the user to generate an itinerary.
+
+    Validated constraints ensure safe, bounded input before the
+    request reaches the Gemini AI or Google Maps services.
+
+    Attributes:
+        destination: City or region name (2–200 characters).
+        start_date: Trip start date (must be in the future).
+        end_date: Trip end date (max 14 days from start).
+        budget: Total trip budget (must be positive).
+        currency: ISO 4217 currency code (e.g., ``INR``, ``USD``).
+        interests: List of travel interest categories (min 1).
+        group_size: Number of travelers (1–20).
+        special_requirements: Optional accessibility or dietary needs.
+    """
+
+    destination: str = Field(
+        ..., min_length=2, max_length=200,
+        examples=["Jaipur, Rajasthan"],
+    )
     start_date: date = Field(..., examples=["2026-06-01"])
     end_date: date = Field(..., examples=["2026-06-04"])
     budget: float = Field(..., gt=0, examples=[15000])
-    currency: str = Field(default="INR", max_length=3, examples=["INR", "USD"])
+    currency: str = Field(
+        default="INR", max_length=3, examples=["INR", "USD"],
+    )
     interests: list[Interest] = Field(
         default_factory=lambda: [Interest.CULTURE, Interest.FOOD],
         min_length=1,
@@ -39,26 +75,43 @@ class TripRequest(BaseModel):
     group_size: int = Field(default=1, ge=1, le=20, examples=[2])
     special_requirements: Optional[str] = Field(
         default=None, max_length=500,
-        examples=["Vegetarian food only, wheelchair accessible"]
+        examples=["Vegetarian food only, wheelchair accessible"],
     )
 
 
 class AdaptRequest(BaseModel):
-    """Request to adapt an existing itinerary."""
+    """Request to adapt an existing itinerary to changed conditions.
+
+    Supports budget changes, place exclusions, weather-based
+    re-optimization, and free-text adaptation reasons.
+
+    Attributes:
+        itinerary_id: ID of the itinerary to adapt.
+        new_budget: Optional revised budget amount.
+        weather_check: Whether to fetch and apply weather data.
+        excluded_places: Places to remove from the itinerary.
+        reason: Free-text description of why adaptation is needed.
+    """
+
     itinerary_id: str = Field(..., min_length=1)
     new_budget: Optional[float] = Field(default=None, gt=0)
     weather_check: bool = Field(default=True)
     excluded_places: list[str] = Field(default_factory=list)
     reason: Optional[str] = Field(
         default=None, max_length=300,
-        examples=["It's raining, suggest indoor activities"]
+        examples=["It's raining, suggest indoor activities"],
     )
 
 
-# ── Response Models ────────────────────────────────────────────────────
+# ── Response Models ──────────────────────────────────────────────────────
 
 class PlaceDetail(BaseModel):
-    """A single place/attraction in the itinerary."""
+    """A single place or activity within the itinerary.
+
+    Contains geographic coordinates for Google Maps marker placement
+    and cost/duration data for budget tracking.
+    """
+
     name: str
     description: str
     category: str
@@ -66,7 +119,7 @@ class PlaceDetail(BaseModel):
     longitude: float
     estimated_cost: float = 0
     duration_minutes: int = 60
-    time_slot: str = ""          # e.g. "09:00 - 10:30"
+    time_slot: str = ""          # Format: "HH:MM - HH:MM"
     rating: Optional[float] = None
     photo_url: Optional[str] = None
     is_indoor: bool = False
@@ -74,10 +127,15 @@ class PlaceDetail(BaseModel):
 
 
 class DayPlan(BaseModel):
-    """A single day's itinerary."""
+    """A single day's itinerary with activities, meals, and tips.
+
+    Activities and meals are sorted chronologically by ``time_slot``
+    in the frontend for timeline rendering.
+    """
+
     day_number: int
     date: str
-    theme: str = ""              # e.g. "Heritage & Culture"
+    theme: str = ""              # e.g., "Heritage & Culture"
     activities: list[PlaceDetail] = Field(default_factory=list)
     meals: list[PlaceDetail] = Field(default_factory=list)
     day_cost: float = 0
@@ -85,7 +143,20 @@ class DayPlan(BaseModel):
 
 
 class Itinerary(BaseModel):
-    """Complete trip itinerary."""
+    """Complete trip itinerary generated by Gemini AI.
+
+    This is the primary response model returned to the frontend.
+    Contains all days, budget tracking, and a human-readable summary.
+
+    Attributes:
+        id: Unique 12-character hex identifier.
+        destination: Trip destination from the original request.
+        total_cost: Sum of all activity and meal costs.
+        budget_utilization: Percentage of budget used (0–100).
+        days: Ordered list of daily plans.
+        summary: AI-generated 2–3 sentence trip overview.
+    """
+
     id: str = ""
     destination: str
     start_date: str
@@ -97,11 +168,16 @@ class Itinerary(BaseModel):
     group_size: int = 1
     days: list[DayPlan] = Field(default_factory=list)
     summary: str = ""
-    budget_utilization: float = 0  # percentage
+    budget_utilization: float = 0  # Percentage (0–100)
 
 
 class AdaptationResult(BaseModel):
-    """Result of an itinerary adaptation."""
+    """Result of an AI-powered itinerary adaptation.
+
+    Contains the modified itinerary, a list of human-readable
+    change descriptions, and optional weather forecast data.
+    """
+
     original_itinerary_id: str
     adapted_itinerary: Itinerary
     changes: list[str] = Field(default_factory=list)

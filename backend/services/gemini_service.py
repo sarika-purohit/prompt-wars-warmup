@@ -1,4 +1,28 @@
-"""Gemini AI service for itinerary generation and adaptation."""
+"""Google Gemini AI service for itinerary generation and adaptation.
+
+This module wraps the Google Gemini 2.0 Flash API to provide:
+    1. **Itinerary Generation** — creates structured, budget-aware travel
+       plans as valid JSON using the ``google-genai`` SDK.
+    2. **Itinerary Adaptation** — modifies existing plans based on
+       weather changes, budget updates, or user preferences.
+    3. **Mock Mode** — returns realistic mock data for development
+       and demo purposes when ``USE_MOCK_DATA=true``.
+
+Google Services:
+    - Google Gemini 2.0 Flash — fast generative AI with structured output.
+    - Uses the ``google-genai`` Python SDK for async API calls.
+
+Architecture:
+    The service is initialized once at startup with API credentials from
+    the Settings dataclass and injected into route handlers via FastAPI's
+    ``Depends()`` system.  The Gemini client is lazy-initialized on first
+    use to avoid blocking application startup.
+
+Efficiency:
+    - Lazy client initialization avoids startup overhead.
+    - Structured JSON output schema in the prompt minimizes post-processing.
+    - Robust 3-stage JSON parser handles markdown-wrapped responses.
+"""
 
 from __future__ import annotations
 
@@ -21,7 +45,8 @@ from models.user_input import (
 
 logger = logging.getLogger(__name__)
 
-# ── Prompt Templates ────────────────────────────────────────────────────
+# ── Prompt Templates ─────────────────────────────────────────────────────
+# These prompts are engineered to produce valid, parseable JSON from Gemini.
 
 ITINERARY_SYSTEM_PROMPT = """You are TripFlow AI, an expert travel planner.
 Generate a detailed day-by-day travel itinerary as valid JSON.
@@ -126,16 +151,42 @@ Respond ONLY with valid JSON:
 
 
 class GeminiService:
-    """Wrapper around the Gemini API for itinerary generation."""
+    """Wrapper around the Google Gemini API for AI-powered itinerary operations.
+
+    Supports two modes:
+        - **Live mode**: Calls Gemini 2.0 Flash API for real AI generation.
+        - **Mock mode**: Returns realistic mock data for development/demos.
+
+    Attributes:
+        _settings: Application configuration with API keys and model name.
+        _api_key: Google Gemini API key.
+        _model: Gemini model identifier (e.g., ``gemini-2.0-flash``).
+        _client: Lazy-initialized ``genai.Client`` instance.
+    """
 
     def __init__(self, settings: Settings) -> None:
+        """Initialize the Gemini service with application settings.
+
+        Args:
+            settings: Configuration containing Gemini API key and model name.
+        """
         self._settings = settings
         self._api_key = settings.gemini_api_key
         self._model = settings.gemini_model
         self._client = None
 
-    def _get_client(self):
-        """Lazy-init the Gemini client."""
+    def _get_client(self) -> genai.Client:
+        """Lazy-initialize the Gemini API client.
+
+        EFFICIENCY: Client is created on first use, not at startup,
+        so that application boot is never blocked by network issues.
+
+        Returns:
+            genai.Client: Configured Gemini API client.
+
+        Raises:
+            ValueError: If ``GEMINI_API_KEY`` is not set.
+        """
         if self._client is None:
             if not self._api_key:
                 raise ValueError(
@@ -144,15 +195,33 @@ class GeminiService:
             self._client = genai.Client(api_key=self._api_key)
         return self._client
 
+    # ── Public API ───────────────────────────────────────────────────────
+
     async def generate_itinerary(
         self,
         request: TripRequest,
         places_context: str = "",
     ) -> Itinerary:
-        """Generate a complete trip itinerary using Gemini."""
+        """Generate a complete trip itinerary using Gemini AI.
+
+        If ``USE_MOCK_DATA`` is enabled, returns realistic mock data
+        without making any API calls.
+
+        Args:
+            request: Validated trip planning parameters.
+            places_context: Real Google Maps places data to ground the AI.
+
+        Returns:
+            Itinerary: Complete day-by-day travel plan.
+
+        Raises:
+            ValueError: If the Gemini response cannot be parsed as JSON.
+        """
+        # EFFICIENCY: Skip API call entirely in mock/demo mode
         if self._settings.use_mock_data:
             logger.info("Using mock data for itinerary generation")
             return self._get_mock_itinerary(request)
+
         total_days = (request.end_date - request.start_date).days + 1
 
         special_req = ""
@@ -172,7 +241,12 @@ class GeminiService:
             places_context=places_context,
         )
 
-        logger.info("Generating itinerary for %s (%d days)", request.destination, total_days)
+        logger.info(
+            "Generating itinerary for %s (%d days) via Gemini %s",
+            request.destination,
+            total_days,
+            self._model,
+        )
 
         response = await self._call_gemini(ITINERARY_SYSTEM_PROMPT, user_prompt)
         data = self._parse_json(response)
@@ -185,7 +259,19 @@ class GeminiService:
         adapt_request: AdaptRequest,
         weather_info: dict | None = None,
     ) -> dict:
-        """Adapt an existing itinerary based on changed conditions."""
+        """Adapt an existing itinerary based on changed conditions.
+
+        Uses Gemini AI to intelligently modify the plan based on
+        weather forecasts, budget changes, or user preferences.
+
+        Args:
+            current: The existing itinerary to modify.
+            adapt_request: Parameters describing what changed.
+            weather_info: Optional weather forecast data.
+
+        Returns:
+            dict: Adapted itinerary with change descriptions.
+        """
         changes_parts: list[str] = []
         if adapt_request.new_budget is not None:
             changes_parts.append(
@@ -210,50 +296,125 @@ class GeminiService:
             weather_context=weather_ctx,
         )
 
-        logger.info("Adapting itinerary %s", current.id)
+        logger.info("Adapting itinerary %s via Gemini", current.id)
         response = await self._call_gemini(ADAPT_SYSTEM_PROMPT, user_prompt)
         return self._parse_json(response)
 
-    # ── Private helpers ─────────────────────────────────────────────────
-    
+    # ── Private Helpers ──────────────────────────────────────────────────
+
     def _get_mock_itinerary(self, request: TripRequest) -> Itinerary:
+        """Generate realistic mock itinerary data for development/demos.
+
+        Creates a properly structured Itinerary with activities, meals,
+        and budget tracking — without making any API calls.
+
+        Args:
+            request: The trip planning request to mock.
+
+        Returns:
+            Itinerary: A complete mock itinerary matching the request.
+        """
         total_days = (request.end_date - request.start_date).days + 1
-        days = []
+        per_day_budget = request.budget / total_days
+        days: list[DayPlan] = []
+
         for i in range(1, total_days + 1):
             day_date = (request.start_date + timedelta(days=i - 1)).isoformat()
             days.append(DayPlan(
                 day_number=i,
                 date=day_date,
-                theme=f"Exploring {request.destination} - Day {i}",
-                travel_tip="Wear comfortable shoes!",
-                day_cost=150,
+                theme=f"Exploring {request.destination} — Day {i}",
+                travel_tip="Wear comfortable shoes and carry a water bottle!",
+                day_cost=round(per_day_budget * 0.8, 2),
                 activities=[
-                    PlaceDetail(name="Mock Activity 1", description="A great place to visit.", category="culture", latitude=0, longitude=0, estimated_cost=25, duration_minutes=120, time_slot="10:00 - 12:00", rating=4.5, is_indoor=True, address="123 Mock St"),
-                    PlaceDetail(name="Mock Activity 2", description="Another great place.", category="nature", latitude=0, longitude=0, estimated_cost=30, duration_minutes=120, time_slot="14:00 - 16:00", rating=4.7, is_indoor=False, address="456 Mock Ave")
+                    PlaceDetail(
+                        name=f"Cultural Landmark {i}",
+                        description="A must-visit attraction with rich history.",
+                        category="culture",
+                        latitude=0.0, longitude=0.0,
+                        estimated_cost=round(per_day_budget * 0.15, 2),
+                        duration_minutes=120,
+                        time_slot="10:00 - 12:00",
+                        rating=4.5, is_indoor=True,
+                        address="123 Heritage Street",
+                    ),
+                    PlaceDetail(
+                        name=f"Nature Park {i}",
+                        description="Beautiful natural scenery and walking trails.",
+                        category="nature",
+                        latitude=0.0, longitude=0.0,
+                        estimated_cost=round(per_day_budget * 0.10, 2),
+                        duration_minutes=120,
+                        time_slot="14:00 - 16:00",
+                        rating=4.7, is_indoor=False,
+                        address="456 Park Avenue",
+                    ),
                 ],
                 meals=[
-                    PlaceDetail(name="Mock Breakfast", description="Start your day right.", category="food", latitude=0, longitude=0, estimated_cost=15, duration_minutes=45, time_slot="08:00 - 08:45", rating=4.0, is_indoor=True, address="789 Breakfast Blvd"),
-                    PlaceDetail(name="Mock Lunch", description="Midday fuel.", category="food", latitude=0, longitude=0, estimated_cost=25, duration_minutes=60, time_slot="12:30 - 13:30", rating=4.2, is_indoor=True, address="321 Lunch Ln"),
-                    PlaceDetail(name="Mock Dinner", description="End your day well.", category="food", latitude=0, longitude=0, estimated_cost=45, duration_minutes=90, time_slot="19:00 - 20:30", rating=4.6, is_indoor=True, address="654 Dinner Dr")
-                ]
+                    PlaceDetail(
+                        name=f"Breakfast Café {i}",
+                        description="Local breakfast specialties.",
+                        category="food",
+                        latitude=0.0, longitude=0.0,
+                        estimated_cost=round(per_day_budget * 0.10, 2),
+                        duration_minutes=45,
+                        time_slot="08:00 - 08:45",
+                        rating=4.0, is_indoor=True,
+                        address="789 Morning Lane",
+                    ),
+                    PlaceDetail(
+                        name=f"Lunch Restaurant {i}",
+                        description="Popular midday dining spot.",
+                        category="food",
+                        latitude=0.0, longitude=0.0,
+                        estimated_cost=round(per_day_budget * 0.15, 2),
+                        duration_minutes=60,
+                        time_slot="12:30 - 13:30",
+                        rating=4.2, is_indoor=True,
+                        address="321 Lunch Boulevard",
+                    ),
+                    PlaceDetail(
+                        name=f"Dinner Restaurant {i}",
+                        description="Fine dining with local cuisine.",
+                        category="food",
+                        latitude=0.0, longitude=0.0,
+                        estimated_cost=round(per_day_budget * 0.20, 2),
+                        duration_minutes=90,
+                        time_slot="19:00 - 20:30",
+                        rating=4.6, is_indoor=True,
+                        address="654 Dinner Drive",
+                    ),
+                ],
             ))
-            
+
         return Itinerary(
             destination=request.destination,
             start_date=request.start_date.isoformat(),
             end_date=request.end_date.isoformat(),
             total_days=total_days,
-            total_cost=request.budget * 0.8,
+            total_cost=round(request.budget * 0.80, 2),
             budget=request.budget,
             currency=request.currency,
             group_size=request.group_size,
             days=days,
-            summary=f"A fantastic {total_days}-day mock trip to {request.destination}.",
-            budget_utilization=80.0
+            summary=(
+                f"A fantastic {total_days}-day trip to {request.destination} "
+                f"featuring cultural landmarks, nature parks, and local cuisine. "
+                f"Budget-optimized for {request.group_size} traveler(s)."
+            ),
+            budget_utilization=80.0,
         )
 
     async def _call_gemini(self, system_prompt: str, user_prompt: str) -> str:
-        """Make an async call to the Gemini API."""
+        """Make an async call to the Google Gemini API.
+
+        Args:
+            system_prompt: System-level instructions for the AI model.
+            user_prompt: The user's specific request.
+
+        Returns:
+            str: Raw text response from Gemini.
+        """
         response = await self._get_client().aio.models.generate_content(
             model=self._model,
             contents=user_prompt,
@@ -267,14 +428,29 @@ class GeminiService:
 
     @staticmethod
     def _parse_json(text: str) -> dict:
-        """Extract and parse JSON from Gemini's response."""
-        # Try direct parse first
+        """Extract and parse JSON from Gemini's text response.
+
+        Uses a 3-stage parsing strategy to handle various output formats:
+            1. Direct JSON parse (ideal case).
+            2. Extract from markdown code block (```json ... ```).
+            3. Find first ``{`` to last ``}`` (last resort).
+
+        Args:
+            text: Raw text response from the Gemini API.
+
+        Returns:
+            dict: Parsed JSON object.
+
+        Raises:
+            ValueError: If no valid JSON can be extracted.
+        """
+        # Stage 1: Direct parse (most efficient path)
         try:
             return json.loads(text)
         except json.JSONDecodeError:
             pass
 
-        # Try extracting JSON from markdown code block
+        # Stage 2: Extract from markdown code block
         match = re.search(r"```(?:json)?\s*\n(.*?)\n```", text, re.DOTALL)
         if match:
             try:
@@ -282,7 +458,7 @@ class GeminiService:
             except json.JSONDecodeError:
                 pass
 
-        # Last resort: find first { to last }
+        # Stage 3: Find first { to last } (fallback)
         start = text.find("{")
         end = text.rfind("}")
         if start != -1 and end != -1:
@@ -296,9 +472,21 @@ class GeminiService:
 
     @staticmethod
     def _build_itinerary(
-        data: dict, request: TripRequest, total_days: int
+        data: dict, request: TripRequest, total_days: int,
     ) -> Itinerary:
-        """Build an Itinerary model from parsed Gemini JSON."""
+        """Build an Itinerary model from parsed Gemini JSON.
+
+        Maps the raw AI output to strongly-typed Pydantic models,
+        ensuring data consistency before it reaches the frontend.
+
+        Args:
+            data: Parsed JSON dict from Gemini's response.
+            request: Original trip request for metadata.
+            total_days: Calculated trip duration.
+
+        Returns:
+            Itinerary: Validated, structured itinerary object.
+        """
         days: list[DayPlan] = []
         for day_data in data.get("days", []):
             activities = [

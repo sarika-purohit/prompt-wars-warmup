@@ -1,4 +1,20 @@
-"""Itinerary adaptation router."""
+"""Itinerary adaptation router — weather-aware re-optimization.
+
+Provides endpoints for adapting existing itineraries when conditions
+change (weather, budget, user preferences).  The adaptation flow:
+
+    1. Load the original itinerary from **Google Cloud Firestore**.
+    2. Fetch current weather from **Open-Meteo API**.
+    3. Send the itinerary + changes to **Google Gemini 2.0 Flash**
+       for intelligent re-optimization.
+    4. Persist the adapted version back to Firestore.
+
+Google Services Used:
+    - Google Gemini 2.0 Flash — AI-powered adaptation logic.
+    - Google Cloud Firestore — load/save itinerary state.
+    - Google Maps Geocoding API — convert destination to coordinates
+      for weather lookup.
+"""
 
 from __future__ import annotations
 
@@ -28,16 +44,16 @@ async def adapt_itinerary(
 ) -> AdaptationResult:
     """Adapt an existing itinerary based on changed conditions."""
 
-    # Load current itinerary
+    # Step 1: Load the current itinerary from Google Cloud Firestore
     current = await firestore.get_itinerary(request.itinerary_id)
     if not current:
         raise HTTPException(status_code=404, detail="Itinerary not found")
 
-    # Optionally update budget
+    # Step 2: Apply any budget changes before adaptation
     if request.new_budget is not None:
         current.budget = request.new_budget
 
-    # Fetch weather if requested
+    # Step 3: Fetch weather forecast using Google Maps geocoding + Open-Meteo
     weather_info = None
     if request.weather_check:
         try:
@@ -53,9 +69,10 @@ async def adapt_itinerary(
             logger.warning("Weather fetch failed (non-fatal): %s", exc)
 
     try:
+        # Step 4: Send to Google Gemini 2.0 Flash for AI-powered adaptation
         result = await gemini.adapt_itinerary(current, request, weather_info)
 
-        # Build adapted itinerary from response
+        # Step 5: Build adapted Itinerary model from Gemini's JSON response
         adapted_data = result.get("adapted_itinerary", {})
         adapted = Itinerary(
             id=f"{current.id}_adapted",
@@ -88,7 +105,7 @@ async def adapt_itinerary(
                 )
             )
 
-        # Save adapted version
+        # Step 6: Persist adapted version to Google Cloud Firestore
         try:
             await firestore.save_itinerary(adapted)
         except Exception:

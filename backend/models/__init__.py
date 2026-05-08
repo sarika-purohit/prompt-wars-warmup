@@ -1,1 +1,1 @@
-"""Data models for TripFlow AI."""
+"""Pydantic data models for request validation and response serialization."""

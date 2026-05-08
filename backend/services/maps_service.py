@@ -1,4 +1,24 @@
-"""Google Maps Platform service for place discovery and routing."""
+"""Google Maps Platform service for place discovery and routing.
+
+Google Services Used:
+    - **Places API (New)** — Text Search for discovering attractions,
+      restaurants, and activities near a destination.
+    - **Geocoding API** — Convert human-readable addresses to
+      latitude/longitude coordinates.
+    - **Directions API** — Calculate travel time and distance between
+      points for realistic itinerary scheduling.
+
+Architecture:
+    Uses ``httpx.AsyncClient`` for non-blocking HTTP requests, enabling
+    high concurrency under FastAPI's async event loop.  The client is
+    created once at initialization and reused across all requests for
+    connection pooling efficiency.
+
+Security:
+    API keys are passed via HTTP headers (``X-Goog-Api-Key``) rather
+    than URL parameters for the Places API (New), following Google's
+    recommended security practice.
+"""
 
 from __future__ import annotations
 

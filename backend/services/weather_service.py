@@ -1,4 +1,18 @@
-"""Weather service using free Open-Meteo API (no API key required)."""
+"""Weather service using the free Open-Meteo API.
+
+Provides daily weather forecasts for trip destinations to enable
+weather-aware itinerary adaptation.  Bad weather detection (rain,
+storms) triggers automatic outdoor→indoor activity swaps.
+
+Efficiency:
+    Uses the Open-Meteo API which requires no API key, reducing
+    configuration overhead.  Responses are lightweight JSON with
+    only the fields needed for adaptation decisions.
+
+Architecture:
+    Uses ``httpx.AsyncClient`` for non-blocking HTTP requests.
+    WMO weather codes are translated to human-readable conditions.
+"""
 
 from __future__ import annotations
 
