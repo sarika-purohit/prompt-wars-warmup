@@ -1,0 +1,121 @@
+.budget-tracker {
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.budget-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+/* ── Progress bar ────────────────────────────────────────── */
+.budget-bar-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.budget-bar-track {
+  height: 10px;
+  background: var(--bg-input);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.budget-bar-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--accent-gradient);
+  transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.budget-bar-fill.over-budget {
+  background: linear-gradient(135deg, #ef4444, #f97316);
+}
+
+.budget-bar-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82rem;
+}
+
+.budget-spent {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.budget-total {
+  color: var(--text-muted);
+}
+
+/* ── Remaining ───────────────────────────────────────────── */
+.budget-remaining {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  background: rgba(16, 185, 129, 0.08);
+  font-size: 0.88rem;
+}
+
+.budget-remaining.over {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.budget-remaining-amount {
+  font-weight: 700;
+  color: var(--accent-success);
+}
+
+.budget-remaining.over .budget-remaining-amount {
+  color: var(--accent-danger);
+}
+
+/* ── Categories ──────────────────────────────────────────── */
+.budget-categories h4 {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-sm);
+}
+
+.category-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.category-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 80px;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.category-label {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  text-transform: capitalize;
+}
+
+.category-bar-track {
+  height: 6px;
+  background: var(--bg-input);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.category-bar-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width 0.8s ease;
+}
+
+.category-amount {
+  font-size: 0.78rem;
+  text-align: right;
+  color: var(--text-secondary);
+  font-weight: 500;
+}

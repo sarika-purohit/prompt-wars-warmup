@@ -1,0 +1,179 @@
+/* ── App Layout ────────────────────────────────────────────── */
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-content {
+  flex: 1;
+  padding-top: var(--space-xl);
+  padding-bottom: var(--space-2xl);
+}
+
+/* ── Error Banner ─────────────────────────────────────────── */
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-lg);
+  color: var(--accent-danger);
+  font-size: 0.9rem;
+  animation: fadeInUp 0.3s ease;
+}
+
+/* ── Planning Layout (before itinerary) ──────────────────── */
+.planning-layout {
+  display: grid;
+  grid-template-columns: 420px 1fr;
+  gap: var(--space-2xl);
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .planning-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Hero Section ─────────────────────────────────────────── */
+.hero-section {
+  display: flex;
+  align-items: center;
+  min-height: 500px;
+}
+
+.hero-content {
+  max-width: 520px;
+}
+
+.hero-title {
+  font-size: 2.8rem;
+  font-weight: 800;
+  line-height: 1.1;
+  margin-bottom: var(--space-lg);
+  letter-spacing: -0.02em;
+}
+
+.hero-desc {
+  font-size: 1.05rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin-bottom: var(--space-xl);
+}
+
+.hero-features {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.hero-feature {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+
+.hero-feature-icon {
+  font-size: 1.3rem;
+  width: 2.2rem;
+  height: 2.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+}
+
+/* ── Results Layout (after itinerary) ────────────────────── */
+.results-layout {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: var(--space-lg);
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .results-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.results-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  position: sticky;
+  top: 90px;
+}
+
+.results-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.back-btn {
+  align-self: flex-start;
+}
+
+/* ── Loading Overlay ──────────────────────────────────────── */
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 14, 26, 0.85);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  animation: fadeInUp 0.3s ease;
+}
+
+.loading-card {
+  text-align: center;
+  padding: var(--space-2xl);
+  border-radius: var(--radius-xl);
+  max-width: 400px;
+}
+
+.loading-card h3 {
+  font-size: 1.2rem;
+  margin: var(--space-lg) 0 var(--space-sm);
+}
+
+.loading-card p {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+}
+
+.loading-spinner-lg {
+  width: 48px;
+  height: 48px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto;
+}
+
+.loading-steps {
+  display: flex;
+  gap: var(--space-md);
+  justify-content: center;
+  margin-top: var(--space-lg);
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.loading-step.active {
+  color: var(--accent-primary);
+  font-weight: 600;
+}
